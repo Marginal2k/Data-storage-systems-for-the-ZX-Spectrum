@@ -1,0 +1,121 @@
+LKDOS Disk Organization
+
+
+The Larken formatted disk is divided into 5K blocks. Each
+block is comprised of ten 512-byte sectors, however, only the
+entire block can be accessed.
+
+On a 40 track double sided disk there are 80 blocks. On a
+40 track single sided disk there are 40 blocks. On a Quad (80
+tracks, double sided) there are 160 blocks. The blocks are
+numbered starting at track 0, side 0 (track 0 is the farthest
+from the centre of the disk). Block 1 is track 0, side 1. All
+even numbered blocks are on side 0 and all odd numbered blocks
+are on side 1.
+
+-- Organization of Blocks
+
+Side 1 1 3 5 7 9 11 13 15 17 19... etc.
+
+Side 0 0 2 4 6 8 10 12 14 16 18... etc.
+
+Block 0 is reserved for the Catalogue, Track Map and Disk
+Name. The Track Map is a 165-byte table beginning at address 24
+in block 0. The map is used when saving to let the DOS know what
+blocks on the disk are available (unused).
+
+The Track Map is created according to the number of tracks
+and sides entered when the disk is formatted. Number starting
+from 0 are listed sequentially up to a possible 164 blocks. Any
+blocks that don't exist on the actual disk or are reserved (block
+0 is reserved for the Catalogue), are replaced with the number
+245. The DOS uses numbers from 245 to 255 as markers in the
+Catalogue.
+
+Example: If a 40 track single sided disk was formatted then the
+Track Map would show all odd numbered blocks as '245'
+(used) as well as the even numbered blocks past the 40
+track limit.
+
+When a file is saved the block that the file used are
+replaced by 245 in the map. When a file is deleted the blocks
+used by the file are restored in the map with the block number.
+If you save a file with a name that is already on the disk the
+file on the disk is first deleted before the new file is resaved.
+
+Following the Track Map are the 'Directory Name Cells'.
+These are a list of 100 or so formatted areas for storing the
+file name of each file and the blocks used by that file. The
+length of each cell is 34 bytes but this may vary if the file is
+[a] custom type file.
+
+Each cell begins with a 255 marker then a 9 character file
+name. If the cell is not used or the file has been deleted then
+a 254 marker follows the 255. After the end of the file name is
+a 253 marker marking the beginning of the Block List used by the
+file.
+
+The end of the Block List is marked by a 249. The 249 is a
+floating marker and if the file is deleted it is moved to just
+after the 253 indicating no blocks used. There is room in each
+cell for 21 blocks (over 100K) that this can be expanded for
+sequential files etc. On the other hand, if you would like more
+that 100 file names per disk for a quad drive that has 160 blocks
+then you can reduce the size of the block area so you can put
+more Name Cells.
+
+The end of the lis of 100 or so Name Cells is marked by a
+250. At address 4500 in the Catalogue Block is the Disk Name.
+It can be very long (over 500 characters) and ends with a 0.
+
+MARKERS used by LKDOS in the Catalogue Block (block 0)
+
+245 -- Block in use. (Used only in the Track Map.)
+249 -- Marks the end of the Block List in Name Cell.
+250 -- Marks the end of the Directory Name Cells.
+253 -- Marks the beginning of the Block List in Name Cell.
+254 -- Follows the 255 if the cell is not used.
+255 -- Marks the beginning of each Directory Name Cell.
+
+Additional Information in the Catalogue Block (block 0)
+
+Address 20 holds the number of sides on the disk,
+Address 21 holds the number of tracks, and,
+Address 22 holds the head speed. (Head speed is the
+speed that the disk drive's head steps from
+track to track.)
+DATA Blocks
+
+All blocks from block 1 up to the maximum on the disk are
+data blocks. Each data block contains a 24 byte information
+header and then room for 5090 bytes of data.
+
+The header is as follows:
+
+
+Address in Block Description
+
+0 Reserved
+1 Block number
+2 - 11 File name of data on block
+12 & 13 Start address of file
+14 & 15 Length of data on block only
+16 Sum check (CRC) number
+17 & 18 Auto start line number for BASIC
+20 & 21 Variable - Program (offset for BASIC)
+22 & 23 Total length of file
+24 Start of DATA (5090 bytes maximum)
+
+Other Information
+
+Kempston Compatible Joystick
+
+A Kempston compatible joystick port is on the left side of
+the disk interface. It is compatible with most software written
+for the Spectrum. The joystick can be accessed by the command
+IN 31. Numbers from 0 to 31 represent the joystick position.
+
+Disk Drive Motor
+
+OUT 64, 1 Turns on the disk drive motor.
+OUT 64, 0 Turns off the disk drive motor.

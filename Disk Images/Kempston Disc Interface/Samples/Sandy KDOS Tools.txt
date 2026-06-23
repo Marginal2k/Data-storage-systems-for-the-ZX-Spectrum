@@ -1,0 +1,19 @@
+-- KDOS TOOLS --
+	DISK DOCTOR
+		DOCTOR		basic
+		stampa		bytes	
+	FAST COPY
+		FAST COPY	basic
+		FA1		bytes
+		FA2		bytes	
+	DISK MENU
+		MENU		basic
+	SUPER CAT
+		DIRETOK		basic
+	TAPE-COPY
+		TAPE-DISK   	basic
+		attr		bytes
+		NEWCOPY		byte
+	SINTAX *
+		RILOCATORE	basic
+		AUTO3		bytes

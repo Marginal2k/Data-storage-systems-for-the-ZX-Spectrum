@@ -1,0 +1,253 @@
+ICE Felix HC Disk File System Description
+George Chirtoaca, 08.10.2010
+Version 1.0
+
+
+1. Introduction
+2. Generic format description
+3. CP/M file system
+4. BASIC file system
+5. Resources
+
+1. Introduction
+
+	HC computers are equipped with a disk interface similar
+to Sinclair manufactured Interface I, but modified to control
+a disk drive instead of microdrive. It uses the Intel 8272
+floppy disk controller, thus being able to handle Single
+Density or Double Density floppy disks. The interface is either
+a distinct board or later built in, for HC2000 model.
+
+	Floppy drives where either 5.25" or later, 3.5". This
+leads to either 40 tracks for 5.25" or 80 tracks for 3.5".
+	Disks can have one usable side or two, a certain number of
+sectors per track. HC disks have 2 sides. 
+
+	The order in which the disk tracks are read can differ: 
+	- track 0, head 0, track 0, head 1, track 1, head 0, track 1, 
+head 1, etc, meaning, the track advances once both disk sides
+are read.
+	- track 0, head 0, track 1, head 0, track 2, head 0,...
+track N, head 0, track 0, head 1, track 1, head 1, etc,
+meaning the whole side 0 is read, than the side 1.
+HC computers read the tracks in the first way.
+
+	Each sector has an ID unique on the same track. Usually
+sectors are laid out interleaved, to optimize the access
+speed. There are two ways to interleave sectors:
+- at hardware level, sector IDs are not consecutive
+- at software level, CP/M reads data from sectors that are not
+adjacent.
+	For HC, there's only software interleave, the order is 
+1, 3, 5, 7, 9 ... This way, while sector 1 is read, the disk
+spins over the sector 2, the reading of sector 1 is finished
+and sector 3 is available for reading.
+
+	HC computers have two operating systems, classic Sinclair
+BASIC with disk extension, and CP/M 2.2, each with it's own
+particular file system. Actually both file systems are CP/M
+based, but with different CP/M parameters.
+
+
+2. Generic format description
+
+	The CP/M file system structures are well described here:
+http://www.seasip.info/Cpm/format22.html. Only relevant
+parts are mentioned.
+
+	The main disk layout looks like this:
+- usually the first 2 or 4 tracks contain the CP/M boot loader,
+but for HC BASIC this doesn't exist, only for CP/M disks
+- the next track contains the disk directory
+- the following tracks contain the file data
+
+2.1 Disk Parameter Block
+	The Disk Parameter Block describes the CP/M file system
+format:
+
+DEFW	spt	;Number of 128-byte records per track
+DEFB	bsh	;Block shift. 3 => 1k, 4 => 2k, 5 => 4k....
+DEFB	blm	;Block mask. 7 => 1k, 0Fh => 2k, 1Fh => 4k...
+DEFB	exm	;Extent mask, see later
+DEFW	dsm	;(no. of blocks on the disc)-1
+DEFW	drm	;(no. of directory entries)-1
+DEFB	al0	;Directory allocation bitmap, first byte
+DEFB	al1	;Directory allocation bitmap, second byte
+DEFW	cks	;Checksum vector size, 0 for a fixed disc
+		;No. directory entries/4, rounded up.
+DEFW	off	;Offset, number of reserved tracks
+
+
+
+2.2 The Directory Entry Structure
+
+
+UU F1 F2 F3 F4 F5 F6 F7 F8 T1 T2 T3 EX S1 S2 RC
+AL AL AL AL AL AL AL AL AL AL AL AL AL AL AL AL
+
+
+	Each file on the disk has at least one directory entry in the
+disk directory, but can span across multiple ones. This 
+structure holds information for one file part called "EXTENT".
+The size  of the structure is 32 bytes, each byte having the
+following significance:
+
+UU - CP/M user code
+F1 - F8 - file name
+T1 - T3 - file name extension (ie .COM), bit 7 is attribute 
+flag: T1 - R/O, T2 - SYS (hidden)
+EX - extent index
+S1 - reserved, 0
+S2 - extent index, high byte,
+extent index = ((32*S2)+EX) / (exm+1)
+exm is the extent mask value from the Disc Parameter Block
+RC - Record count for this extent
+AL - Allocation unit number
+
+2.3 File allocation
+
+	The files are allocated in allocation units. So even if a file
+has one byte, which occupies part of one sector, a whole 
+allocation unit is reserved for that file. The smallest disk 
+allocation unit is a sector and the CP/M allocation unit has a 
+few sectors.
+	The smallest logical allocation unit for CP/M is the RECORD.
+One record has 128 bytes, because the first floppy disks had a
+sector size of 128 bytes. That's why CP/M cannot know the exact
+size of a file, it's only rounded at 128 byte boundary, but
+still occupies at least a whole allocation unit.
+	Depending on how many allocation units are available on disk, 
+the AL can be 8 bit wide or 16 bit wide. In the later case, the
+extent holds 8 allocation unit numbers, 2 bytes for each.
+	Usually one directory controls one file extent, but it's
+possible that more extents are fitted in one directory entry.
+Then, the EXM CP/M parameter is bigger than 0.
+
+
+
+3. CP/M file system
+
+	HC CP/M is a standard CP/M 2.2 implementation. The
+parameters will be described using 22DSK program definition
+files.
+
+3.1 CP/M on 3.5" drive
+
+BEGIN CPM3 HC CP/M 3.5
+DENSITY MFM ,LOW
+CYLINDERS 80
+SIDES 2
+SECTORS 9,512
+SIDE1 0 1,3,5,7,9,2,4,6,8
+SIDE2 1 1,3,5,7,9,2,4,6,8
+ORDER SIDES
+BSH 4 BLM 15 EXM 0 DSM 351 DRM 127 AL0 0C0H AL1 0 OFS 4
+END
+		
+- 80 tracks x 2 heads x 9 sect/track x 512 B/sect = 737280 B
+- 2048 B / alloc. unit => 360 alloc. units
+- 4 tracks for boot = 9 alloc units => 351 alloc. units free
+- 2 alloc unit for dir. => 4096/32 = 128 dir. entries max.	
+
+3.2	HC CP/M on 5.25" drive
+
+BEGIN CPM5 HC CP/M 5.25
+DENSITY MFM ,LOW
+CYLINDERS 40
+SIDES 2
+SECTORS 9,512
+SIDE1 0 1,3,5,7,9,2,4,6,8
+SIDE2 1 1,3,5,7,9,2,4,6,8
+ORDER SIDES
+BSH 4 BLM 15 EXM 1 DSM 174 DRM 63 AL0 080H AL1 0 OFS 2
+END
+
+- 40 tracks x 2 heads x 9 sect/track x 512 B/sect = 368640 B
+- 2048 B/alloc. unit => 180 alloc. units
+- 2 tracks for boot => 329424B allocatable/2048B = 175.5 alloc. units
+- 1 alloc unit for dir. => 2048/32 = 64 dir. entries max.	
+
+
+
+4. BASIC file system
+
+	The BASIC file system is CP/M based, with the addition that
+the files can have a type, specific for Spectrum, like:
+- 0 = Program
+- 1 = Bytes
+- 2 = Character Array
+- 3 = Number Array
+- anything else = file without type
+
+	The file type and type specific information resides in the
+file header, 9 bytes wide, that is identical to the Sinclair
+IF1 file header:
+
+- 1 byte - file type, as described above: 0,1,2,3
+- 2 bytes - file length (exact)
+- 2 bytes - bytes file start address, only for type 3
+- 2 bytes - program length without variables, only for type 0
+	    - variable name for arrays, type 2 or 3
+- 2 bytes - start line number, only for type 0
+  
+	BASIC commands for file operation are identical with IF1
+commands, but with the device name "d" instead of "m". Ex:
+
+- LOAD *"d";1;"programX" - loads a program from drive 1
+- LOAD *"d";2;"bytes" CODE - loads bytes from drive 2
+- SAVE *"d";1;"no.array" DATA a(), etc
+
+
+4.1 BASIC 3.5" format
+
+BEGIN BAS HC BASIC 3.5
+DENSITY MFM ,LOW
+CYLINDERS 80
+SIDES 2
+SECTORS 16,256
+SIDE1 0 1,3,5,7,9,11,13,15,2,4,6,8,10,12,14,16
+SIDE2 1 1,3,5,7,9,11,13,15,2,4,6,8,10,12,14,16
+ORDER SIDES
+BSH 4 BLM 15 EXM 0 DSM 320 DRM 127 AL0 0C0H AL1 0 OFS 0
+END
+
+- 80 tracks x 2 heads x 16 sect/track x 256 B/sect = 655360 B
+- 2048 B / alloc. unit => 320 alloc. units
+- 0 tracks for boot = 0 alloc units => 320 alloc. units free
+- 2 alloc unit for dir. => 4096/32 = 128 dir. entries max.	
+
+
+4.2 BASIC 5.25" format
+
+BEGIN BAS HC BASIC 5.25
+DENSITY MFM, LOW
+CYLINDERS 40
+SIDES 2
+SECTORS 16,256
+SIDE1 0 1,3,5,7,9,11,13,15,2,4,6,8,10,12,14,16
+SIDE2 1 1,3,5,7,9,11,13,15,2,4,6,8,10,12,14,16
+ORDER SIDES
+BSH 4 BLM 15 EXM 0 DSM 160 DRM 127 AL0 0C0H AL1 0 OFS 0
+END
+
+- 40 tracks x 2 heads x 16 sect/track x 256 B/sect = 327680 B
+- 2048 B / alloc. unit => 160 alloc. units
+- 0 tracks for boot = 0 alloc units => 160 alloc. units free
+- 2 alloc unit for dir. => 4096/32 = 128 dir. entries max.
+
+
+5. Resources
+
+- Good description of CP/M file system and BDOS
+http://www.seasip.info/Cpm/format22.html
+http://www.seasip.info/Cpm/bdosfunc.html
+
+- 22DSK program by Sydex has nice documentation about CP/M
+ftp://ftp.simtel.net/pub/simtelnet/msdos/diskutil/22dsk144.zip
+
+- CP/M Manuals
+http://www.cpm.z80.de/drilib.html
+
+- Programs and documentation on my site
+- "ABC de calculatoare personale, vol. 2"
+http://sites.google.com/site/georgechirtoaca/
