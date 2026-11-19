@@ -9,8 +9,8 @@ sys.path.insert(0, os.path.join(HERE, '..', 'tools'))
 sys.stdout.reconfigure(line_buffering=True)
 from zxharness import ZX
 from run_libtest import ROMS
-from run_seadragon import boot_128basic, menu_rows
 import run_t2 as t
+from zx128 import enter_128basic, command_128
 import opdtool
 
 RES = {l.split(': EQU 0x')[0]: int(l.split(': EQU 0x')[1], 16) for l in open(os.path.join(t.OB, 'res128.exp'))}
@@ -33,8 +33,8 @@ def boot(zx, rom, fmt, machine, img):
                 zx.insert(img + bytes([0xE5]) * len(img), geom=(80, 1, 18, 256))
             else:
                 zx.insert(img, geom=g)
-        t.enter_128basic(zx, ins)
-        t.command_128(zx, lambda: zx.type('load *"m";1;"run"', hold=6, gap=6))
+        enter_128basic(zx, ins)
+        command_128(zx, lambda: zx.type('load *"m";1;"run"', hold=6, gap=6))
     else:
         zx.insert(img, geom=g)
         zx.frames(120)

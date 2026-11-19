@@ -4,7 +4,13 @@
   mkmono.py OUT.opd --block screen.scr@16384 --block game.bin@24576 --start 32768
             [--name run] [--clear 24575] [--sp 0] [--compact] [--catalog]
             [--tiny [--step 7]] [--org 0] [--disk base.opd|.dsk] [--fmt sd|sdds|dd] [--label NAME]
+            [--universal [--dd-out OUT.dsk]]
 OUT: .opd for SD (the standard 184320-byte image) or .dsk; DD (--fmt dd) only as .dsk.
+
+--universal: ONE file for SD and DD disks (also after a file copy from one to the
+other): everything after the BASIC part is 512-aligned in the file, the loader
+reads the geometry from the anchor sector. Costs < 256 bytes per block on SD.
+--dd-out writes the same file onto a DD disk (.dsk) as well.
 
 Blocks are loaded in the given order, byte-exact: on disk each block starts
 on a sector boundary, and the loader cuts its last sector to the real length,
@@ -74,10 +80,16 @@ def check_blocks(blocks):
 
 def build(blocks, start=0, name='run', clear=None, sp=0, fast=True, catalog=False,
           org=None, tps=40, autostart=10, buf=None, tiny=False, step=7, spt=18, bps=256,
-          reserve=(), warn=print):
+          reserve=(), warn=print, universal=False, rem=0):
     """blocks: list of (bytes, address). Returns (file payload incl. header, info).
-    org: None = choose free uncontended memory, 0 = in place in the REM."""
+    org: None = choose free uncontended memory, 0 = in place in the REM.
+    universal: one file for SD and DD (512-aligned; bps is then the unit, 512).
+    rem: add a line 30 REM of this many bytes (moves the end of the BASIC part: tests)."""
     check_blocks(blocks)
+    if universal:
+        if tiny:
+            raise SystemExit('--universal needs the library loader (not --tiny)')
+        bps = 512
     from math import gcd
     if tiny and gcd(step, spt) != 1:
         raise SystemExit('--step %d must be coprime with %d sectors/track' % (step, spt))
@@ -92,12 +104,13 @@ def build(blocks, start=0, name='run', clear=None, sp=0, fast=True, catalog=Fals
     if clear is None:
         lo = min(a for d, a in blocks)
         clear = lo - 1 if lo > 24000 else 0
-    nb, auto = 0, org is None
+    nb, auto, padu = 0, org is None, 0
     if auto:
         org = 0
-    for _ in range(4):
+    for _ in range(6):
         cfg = '\n'.join([
             'LDR_ORG = %d' % org, 'MONO_FAST = %d' % fast, 'MONO_POS = %d' % catalog,
+            'MONO_UNI = %d' % universal, 'MONO_PADU = %d' % padu,
             'MONO_TPS = %d' % tps, 'MONO_SPT = %d' % spt, 'MONO_SPG = %d' % spg, 'MONO_BUF = %d' % buf, 'MONO_START = %d' % start, 'MONO_SP = %d' % sp,
             'MONO_NB = %d' % nb, '        DEFINE MONO_NAME "%s"' % name.ljust(10)[:10],
             '        DEFINE MONO_STEP %d' % step,
@@ -106,7 +119,13 @@ def build(blocks, start=0, name='run', clear=None, sp=0, fast=True, catalog=Fals
         line20 = ('20 ' + ('CLEAR %d: ' % clear if clear else '') +
                   'RANDOMIZE USR (PEEK 23635+256*PEEK 23636+5)')
         prog = basic_line(10, bytes([0xEA]) + code) + tokenize(line20)
+        if rem:
+            prog += basic_line(30, bytes([0xEA]) + b'.' * rem)
         new_nb = (7 + len(prog) + bps - 1) // bps
+        new_padu = 2 * new_nb - (7 + len(prog) + 255) // 256 if universal else 0
+        if new_padu != padu:              # (the code does not change size with it)
+            padu = new_padu
+            continue
         if auto:                          # place the body: size does not depend on org
             body = len(code) - 15         # minus the relocating stub
             ramtop = clear or 0xFF57
@@ -137,7 +156,7 @@ def build(blocks, start=0, name='run', clear=None, sp=0, fast=True, catalog=Fals
     for d, a in blocks:
         payload += d + b'\0' * (-len(d) % bps)
     info = dict(loader_bytes=len(code), basic_len=len(prog), basic_sectors=nb,
-                total_sectors=len(payload) // bps, clear=clear, sym=sym, org=org or 23760 + 15)
+                total_sectors=len(payload) // bps, clear=clear, sym=sym, org=org or 23760 + 15, padu=padu)
     return payload, info
 
 
@@ -159,6 +178,8 @@ def main():
     ap.add_argument('--disk', help='add to this existing image instead of a new one')
     ap.add_argument('--fmt', default='sd', help='new image format: sd (40x1x18x256), sdds (80x2x18x256), dd (80x2x10x512)')
     ap.add_argument('--label', default='')
+    ap.add_argument('--universal', action='store_true', help='one file for SD and DD disks (512-aligned, geometry from the anchor)')
+    ap.add_argument('--dd-out', help='--universal: also write the same file onto a new DD disk (.dsk)')
     a = ap.parse_args()
     blocks = []
     for b in a.block:
@@ -170,13 +191,23 @@ def main():
         lo, hi = r.split('-')
         reserve.append((num(lo.replace('#', '0x')), num(hi.replace('#', '0x')) + 1))
     payload, info = build(blocks, a.start, a.name, a.clear, a.sp, not a.compact, a.catalog, a.org, img.tps,
-                          buf=a.buf, tiny=a.tiny, step=a.step, spt=img.spt, bps=img.bps, reserve=reserve)
+                          buf=a.buf, tiny=a.tiny, step=a.step, spt=img.spt, bps=img.bps, reserve=reserve,
+                          universal=a.universal)
     e = img.add_raw(a.name, payload)
     img.save(a.out)
-    print('%s: "%s" blocks %d-%d; loader %d bytes (body runs at #%04X), BASIC %d bytes (%d sectors), '
-          '%d sectors total, CLEAR %s' % (
+    if a.dd_out:
+        if not a.universal:
+            raise SystemExit('--dd-out needs --universal')
+        dd = OPD.new('dd', a.label or a.name)
+        dd.add_raw(a.name, payload)
+        dd.save(a.dd_out)
+        print('%s: the same file on a DD disk' % a.dd_out)
+    unit = '512-byte units' if a.universal else 'sectors'
+    print('%s: "%s" blocks %d-%d; loader %d bytes (body runs at #%04X), BASIC %d bytes (%d %s), '
+          '%d %s total, CLEAR %s%s' % (
               a.out, a.name, e['first'], e['end'], info['loader_bytes'], info['org'], info['basic_len'],
-              info['basic_sectors'], info['total_sectors'], info['clear'] or '-'))
+              info['basic_sectors'], unit, info['total_sectors'], unit, info['clear'] or '-',
+              ', PADU %d' % info['padu'] if a.universal else ''))
 
 
 if __name__ == '__main__':

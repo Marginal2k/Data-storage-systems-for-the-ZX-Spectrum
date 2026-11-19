@@ -12,10 +12,13 @@ sys.path.insert(0, os.path.join(HERE, '..', 'tools'))
 sys.stdout.reconfigure(line_buffering=True)
 from zxharness import ZX
 from run_libtest import ROMS
-from run_seadragon import boot_128basic, menu_rows
+from zx128 import boot_128basic, menu_rows, enter_128basic, command_128
 
-T2 = os.environ.get('T2_DIR', r'C:\Users\User\Claude-Fable\T2')
+T2 = os.environ.get('T2_DIR', os.path.join(HERE, '..', '..', 'T2'))   # the game's repository
 OB = os.environ.get('T2_OB') or os.path.join(T2, 'build', 'opus')
+if not os.path.isfile(os.path.join(OB, 'kern48.sym')):
+    raise SystemExit('Terminator 2 build not found in %s: set T2_DIR to the game repository and run '
+                     'tools/build_opus.py there first' % os.path.abspath(OB))
 DUPE = os.environ.get('T2_DUPE')        # level test builds (build_opus.py --start N): the cheat on, fights won by #7E0F = 0
 FIGHT = os.environ.get('T2_FIGHT')      # 1 = the starting stage is a fight
 
@@ -56,40 +59,6 @@ def hook(zx, machine):
                                  data: Array.from(zxDebug.peekBlock(b, u * 256))}); }
             for (const [name, pc] of W) if (a === pc && !(name in window._ev)) window._ev[name] = s.totalFrames; }}); return 1; })()''' % (
         json.dumps(pts), json.dumps([['kern', K['kern_start']], ['g7200', 0x7200], ['title', 0x7EA9]]), json.dumps(rds)))
-
-
-def enter_128basic(zx, insert=None):
-    """128K menu -> 128 BASIC, (insert the disk: that may reset the machine), and make sure we are in 128 BASIC
-    (the menu walk of the harness sometimes lands on Tape Loader): retry from a reset"""
-    for attempt in range(4):
-        boot_128basic(zx)
-        if insert:
-            insert()
-            zx.frames(20)
-            if menu_rows(zx) or zx.js('zxDebug.captureRegisters().pc') < 0x100:
-                boot_128basic(zx)
-        zx.frames(150)                  # (an inserted image may reset the machine a little later)
-        txt = zx.screen_text()
-        if not menu_rows(zx) and 'Tape Loader' not in txt and 'Calculator' not in txt:
-            return True
-        zx.reset()
-        zx.frames(50)
-    return False
-
-
-def command_128(zx, typer):
-    """Type a command in 128 BASIC (typer() types it without ENTER) and press ENTER - but only when the
-    128K menu is not on the screen: M8XXX sometimes drops back to the menu after 128 BASIC was entered,
-    and ENTER would then start the Tape Loader. If the menu is there: into 128 BASIC again, type again."""
-    for attempt in range(4):
-        typer()
-        zx.frames(30)
-        if not menu_rows(zx):
-            zx.type(chr(10), hold=6, gap=6)
-            return True
-        boot_128basic(zx)
-        zx.frames(30)
-    return False
 
 
 def check(recs):

@@ -13,8 +13,9 @@ sys.path.insert(0, os.path.join(HERE, '..', 'tools'))
 sys.stdout.reconfigure(line_buffering=True)
 from zxharness import ZX
 from run_libtest import ROMS
+from zx128 import boot_128basic, menu_rows, enter_128basic, command_128
 
-GAME = os.environ.get('SEADRAGON', r'C:\Users\User\Documents\GitHub\seadragon')
+GAME = os.environ.get('SEADRAGON', os.path.join(HERE, '..', '..', 'seadragon'))   # the game's repository
 BUILD = os.path.join(GAME, 'build')
 
 
@@ -27,37 +28,13 @@ def syms():
     return out
 
 
+if not os.path.isfile(os.path.join(BUILD, 'SeaDragon.sym')):
+    raise SystemExit('Sea Dragon build not found in %s: set SEADRAGON to the game repository and run '
+                     'build.py there first' % os.path.abspath(BUILD))
 S = syms()
 MAIN = open(os.path.join(BUILD, 'bin', 'sd_main.C'), 'rb').read()
 PAGES = {S['AY_MUSIC_PAGE']: 'sd_p3.C', S['AY_SOUND_PAGE']: 'sd_p1.C', S['IO_PAGE']: 'sd_p4.C', S['AY_MELODY_PAGE']: 'sd_p6.C'}
 PAGEDATA = {p: open(os.path.join(BUILD, 'bin', f), 'rb').read() for p, f in PAGES.items()}
-
-
-def menu_rows(zx):
-    """Rows of the 128K menu box whose attribute has cyan paper (the highlight)."""
-    attrs = zx.peek(0x5800, 768)
-    return [r for r in range(24) if (attrs[r * 32 + 14] & 0x38) == 0x28]
-
-
-def boot_128basic(zx):
-    """128K menu -> 128 BASIC: press DOWN until the highlight sits one row below where
-    it started (Tape Loader -> 128 BASIC), then ENTER. Not "48 BASIC": that option
-    locks the paging port, so the game would rightly see a 48K machine."""
-    zx.frames(200)
-    start = None
-    for _ in range(40):
-        rows = menu_rows(zx)
-        if rows:
-            start = rows[0]
-            break
-        zx.frames(10)
-    for _ in range(10):
-        if start is not None and menu_rows(zx)[:1] == [start + 1]:
-            break
-        zx.key('ArrowDown', frames=10)
-        zx.frames(25)
-    zx.key('Enter', frames=10)
-    zx.frames(150)
 
 
 def run(rom, fmt, machine):
@@ -68,8 +45,6 @@ def run(rom, fmt, machine):
             # M8XXX quirk: with a 40-track drive geometry, 128 BASIC drops back to the menu. The emulated
             # drive is given 80 tracks; the disk itself (its anchor: 40 tracks) is unchanged and the loader
             # takes the geometry from it. Inserting an image may reset the machine: enter_128basic retries.
-            from run_t2 import enter_128basic
-
             def ins():
                 if fmt == 'dd':
                     zx.insert(img)
@@ -89,7 +64,6 @@ def run(rom, fmt, machine):
             S['Start'], S['START_ORG'], len(MAIN), list(PAGES), S['AvailableDevices']))
         f0 = zx.js('zxDebug.spectrum.totalFrames')
         if machine == '128k':           # 128 BASIC: Opus commands typed in full
-            from run_t2 import command_128
             command_128(zx, lambda: zx.type(boot, hold=6, gap=6))
         else:
             zx.basic(boot)

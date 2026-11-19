@@ -2,7 +2,7 @@
 # Terminator 2 on the Opus, 48K: every stage from the disk. For N in 1..8 build a test image whose game starts at stage N
 # (build_opus.py --start N --nointro), turn the DUPE cheat on, play a while (fights are won by #7E0F = 0, so the next stage
 # loads too) and compare every read with the file.      sh run_t2levels.sh [ROM] [stages]    -> log_levels.log
-T2=${T2_DIR:-/c/Users/User/Claude-Fable/T2}
+T2=${T2_DIR:-$(dirname "$0")/../../T2}
 ROM=${1:-"Opus Discovery 1 v2.22 (1985)(Opus Supplies).rom"}
 LV=${2:-"1 2 3 4 5 6 7 8"}
 RUNPY=$(cd "$(dirname "$0")" && pwd)/run_t2.py

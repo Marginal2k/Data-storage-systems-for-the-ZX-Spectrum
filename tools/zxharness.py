@@ -11,8 +11,8 @@ Starts serve.py + headless Edge with a DevTools port, talks CDP over websockets.
 import asyncio, base64, json, os, socket, subprocess, sys, tempfile, time, urllib.request, shutil
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-EMU = r'D:\Emulators\ZX\ZX-M8XXX'
-EDGE = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+EMU = os.environ.get('ZXM8XXX', r'D:\Emulators\ZX\ZX-M8XXX')          # the emulator's folder (index.html, roms/)
+EDGE = os.environ.get('EDGE', r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe')   # Chromium browser
 HTTP_PORT = 8765
 CDP_PORT = 9333
 

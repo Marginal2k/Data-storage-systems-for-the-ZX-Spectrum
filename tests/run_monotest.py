@@ -1,6 +1,8 @@
 """Boot monoblock disks built by tools/mkmono.py in ZX-M8XXX and check memory.
 
-python run_monotest.py [rom ...]       env FORMATS=sd,sdds,dd  VARIANTS=tiny,fast,compact,cat,catc
+python run_monotest.py [rom ...]       env FORMATS=sd,sdds,dd  VARIANTS=tiny,fast,compact,cat,catc,uni,unicat,unipad
+uni*: --universal (one file for SD and DD); unipad: the BASIC part ends in the 1st half
+of a 512-byte unit, so on SD the data start one sector later (PADU = 1).
 v1.2 boots with RUN (auto "run"); later ROMs with LOAD *"m";1;"run" because the
 emulator mis-handles their RUN auto-boot (see README).
 """
@@ -22,8 +24,9 @@ BLOCKS = [(SCR, 16384), (GAME, 28000), (TAIL, 60000)]
 GUARDS = [(0x5B00, 0x5C00), (58000, 58600), (61000, 61600), (28000 - 16, 28000), (60000 - 16, 60000)]
 GUARD_BYTES = {a: bytes((a + i * 7) & 255 ^ 0xA5 for i in range(b - a)) for a, b in GUARDS}
 
-VARIANTS = {  # name: (fast, catalog, tiny)
-    'tiny': (0, 0, 1), 'fast': (1, 0, 0), 'compact': (0, 0, 0), 'cat': (1, 1, 0), 'catc': (0, 1, 0)}
+VARIANTS = {  # name: (fast, catalog, tiny, universal, rem bytes)
+    'tiny': (0, 0, 1, 0, 0), 'fast': (1, 0, 0, 0, 0), 'compact': (0, 0, 0, 0, 0), 'cat': (1, 1, 0, 0, 0), 'catc': (0, 1, 0, 0, 0),
+    'uni': (1, 0, 0, 1, 0), 'unicat': (1, 1, 0, 1, 0), 'unipad': (1, 0, 0, 1, 300)}
 LAYOUTS = {
     'sd':   ['start', 'trackend', 'mid'],
     'sdds': ['side-cross', 'on-side1'],
@@ -43,10 +46,14 @@ def pad(o, nblocks):
 
 
 def disk(variant, fmt, layout):
-    fast, cat, tiny = VARIANTS[variant]
+    fast, cat, tiny, uni, rem = VARIANTS[variant]
     o = OPD.new(fmt, 'MONO')
     payload, info = build(BLOCKS, start=0, name='run', fast=fast, catalog=cat, tiny=tiny,
-                          tps=o.tps, spt=o.spt, bps=o.bps, reserve=GUARDS, warn=lambda m: None)
+                          tps=o.tps, spt=o.spt, bps=o.bps, reserve=GUARDS, warn=lambda m: None,
+                          universal=bool(uni), rem=rem)
+    if uni:
+        assert variant != 'unipad' or info['padu'] == 1, info['padu']
+        info['basic_sectors'] = info['basic_sectors'] * 512 // o.bps    # (counted in 512-byte units)
     nb, spt = info['basic_sectors'], o.spt
     if layout == 'trackend':      # BASIC part ends on the last sector of track 3 -> data starts next track
         pad(o, (4 * spt - 2) - nb + 1 - 7)
