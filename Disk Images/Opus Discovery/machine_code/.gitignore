@@ -1,0 +1,19 @@
+# build outputs
+build/
+__pycache__/
+examples/**/*.bin
+examples/**/*.opd
+examples/**/*.dsk
+
+# third-party documentation (PDFs) and scratch
+reference/
+work/
+
+# test artefacts
+tests/*.png
+tests/*.log
+tests/*.bin
+tests/*.lst
+tests/*.sym
+tests/trace_*.txt
+tests/dbg_*.py
