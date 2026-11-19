@@ -68,7 +68,7 @@ def run(rom, fmt, rem):
         r = t.call('op_base', {})
         if 'EXCOM' in rom and fmt == 'sd' and r['hl'] != want_base:
             # EXCOM double-steps 40-track disks (logical track t = physical 2t): its track register after the
-            # LOAD holds 2t. The emulator has no double step; see README 7. Not counted.
+            # LOAD holds 2t. Neither ZX-M8XXX nor FUSE models double step (README.md, section 7). Not counted.
             print('   %-48s known: EXCOM double step (got %d)' % ('%s op_base = unit %d' % (tag, want_base), r['hl']))
         else:
             t.check('%s op_base = unit %d' % (tag, want_base), r['hl'] == want_base, r['hl'])
