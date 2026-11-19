@@ -38,7 +38,7 @@ PAGEDATA = {p: open(os.path.join(BUILD, 'bin', f), 'rb').read() for p, f in PAGE
 
 
 def run(rom, fmt, machine):
-    img = os.path.join(BUILD, 'SeaDragon_opus_%s.%s' % (fmt, 'opd' if fmt == 'sd' else 'dsk'))
+    img = os.environ.get('SD_IMAGE') or os.path.join(BUILD, 'SeaDragon_opus_%s.%s' % (fmt, 'opd' if fmt == 'sd' else 'dsk'))   # SD_IMAGE: another image (then the format name is only a label; 'sd' = a 40-track disk)
     boot = 'RUN' if ('v1.2' in rom and machine == '48k') else 'LOAD *"m";1;"run"'
     with ZX(rom=rom, machine=machine) as zx:
         if machine == '128k':
@@ -46,7 +46,7 @@ def run(rom, fmt, machine):
             # drive is given 80 tracks; the disk itself (its anchor: 40 tracks) is unchanged and the loader
             # takes the geometry from it. Inserting an image may reset the machine: enter_128basic retries.
             def ins():
-                if fmt == 'dd':
+                if fmt != 'sd':      # (80 tracks: no M8XXX quirk)
                     zx.insert(img)
                 else:
                     raw = open(img, 'rb').read()

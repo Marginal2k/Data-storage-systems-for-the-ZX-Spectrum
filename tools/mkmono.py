@@ -4,13 +4,19 @@
   mkmono.py OUT.opd --block screen.scr@16384 --block game.bin@24576 --start 32768
             [--name run] [--clear 24575] [--sp 0] [--compact] [--catalog]
             [--tiny [--step 7]] [--org 0] [--disk base.opd|.dsk] [--fmt sd|sdds|dd] [--label NAME]
-            [--universal [--dd-out OUT.dsk]]
+            [--universal [--dd-out OUT.dsk]] [--std [--dsdd-out OUT.opd]]
 OUT: .opd for SD (the standard 184320-byte image) or .dsk; DD (--fmt dd) only as .dsk.
 
 --universal: ONE file for SD and DD disks (also after a file copy from one to the
 other): everything after the BASIC part is 512-aligned in the file, the loader
 reads the geometry from the anchor sector. Costs < 256 bytes per block on SD.
 --dd-out writes the same file onto a DD disk (.dsk) as well.
+
+--std: ONE file for the two standard formats, 180K (40x1x18x256) and 720K
+(80x2x18x256): 18 sectors of 256 bytes, side 1 after track 79 (on 180K a file
+never gets there), so no anchor and no 512-byte alignment are needed. The
+recommended choice for new releases. --dsdd-out writes the same file onto a
+new 720K disk (.opd, 737280 bytes) as well.
 
 Blocks are loaded in the given order, byte-exact: on disk each block starts
 on a sector boundary, and the loader cuts its last sector to the real length,
@@ -180,6 +186,8 @@ def main():
     ap.add_argument('--label', default='')
     ap.add_argument('--universal', action='store_true', help='one file for SD and DD disks (512-aligned, geometry from the anchor)')
     ap.add_argument('--dd-out', help='--universal: also write the same file onto a new DD disk (.dsk)')
+    ap.add_argument('--std', action='store_true', help='one file for 180K and 720K disks (18 x 256, side 1 after track 79)')
+    ap.add_argument('--dsdd-out', help='--std / --universal: also write the same file onto a new 720K disk (.opd)')
     a = ap.parse_args()
     blocks = []
     for b in a.block:
@@ -190,7 +198,14 @@ def main():
     for r in a.reserve:
         lo, hi = r.split('-')
         reserve.append((num(lo.replace('#', '0x')), num(hi.replace('#', '0x')) + 1))
-    payload, info = build(blocks, a.start, a.name, a.clear, a.sp, not a.compact, a.catalog, a.org, img.tps,
+    tps = img.tps
+    if a.std:
+        if a.universal:
+            raise SystemExit('--std and --universal exclude each other')
+        if (img.spt, img.bps) != (18, 256) or (img.sides, img.tps) not in ((1, 40), (2, 80)):
+            raise SystemExit('--std: the disk must be 180K (40x1x18x256) or 720K (80x2x18x256)')
+        tps = 80                         # side 1 after track 79: right for 720K, never reached on 180K
+    payload, info = build(blocks, a.start, a.name, a.clear, a.sp, not a.compact, a.catalog, a.org, tps,
                           buf=a.buf, tiny=a.tiny, step=a.step, spt=img.spt, bps=img.bps, reserve=reserve,
                           universal=a.universal)
     e = img.add_raw(a.name, payload)
@@ -202,6 +217,13 @@ def main():
         dd.add_raw(a.name, payload)
         dd.save(a.dd_out)
         print('%s: the same file on a DD disk' % a.dd_out)
+    if a.dsdd_out:
+        if not (a.std or a.universal):
+            raise SystemExit('--dsdd-out needs --std or --universal')
+        ds = OPD.new('sdds', a.label or a.name)
+        ds.add_raw(a.name, payload)
+        ds.save(a.dsdd_out)
+        print('%s: the same file on a 720K disk' % a.dsdd_out)
     unit = '512-byte units' if a.universal else 'sectors'
     print('%s: "%s" blocks %d-%d; loader %d bytes (body runs at #%04X), BASIC %d bytes (%d %s), '
           '%d %s total, CLEAR %s%s' % (

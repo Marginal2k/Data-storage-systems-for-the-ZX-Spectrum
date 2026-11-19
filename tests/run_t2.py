@@ -77,14 +77,14 @@ def check(recs):
 
 
 def run(rom, fmt, machine, play):
-    img = os.path.join(OB, 'T2_opus_%s.%s' % (fmt, 'opd' if fmt == 'sd' else 'dsk'))
+    img = os.environ.get('T2_IMAGE') or os.path.join(OB, 'T2_opus_%s.%s' % (fmt, 'opd' if fmt == 'sd' else 'dsk'))   # T2_IMAGE: another image (then the format name is only a label; 'sd' = a 40-track disk)
     via_run = os.environ.get('T2_BOOT') == 'run'      # boot the launcher "run" (one program on the disk: it starts T2 at once)
     cmd = ('RUN' if 'v1.2' in rom else 'LOAD *"m";1;"run"') if via_run else 'LOAD *"m";1;"T2"'
     tag = '%s_%s_%s%s' % (fmt, machine, rom.split()[2] if len(rom.split()) > 2 else 'x', os.environ.get('T2_TAG', ''))
     with ZX(rom=rom, machine=machine) as zx:
         if machine == '128k':
             def ins():
-                if fmt == 'dd':
+                if fmt != 'sd':      # (80 tracks: no M8XXX quirk)
                     zx.insert(img)
                 else:                   # M8XXX quirk: with a 40-track drive geometry 128 BASIC drops back to the menu. The emulated drive is given
                     raw = open(img, 'rb').read()  # 80 tracks; the disk itself (its anchor: 40 tracks) is unchanged, the game takes the geometry from it

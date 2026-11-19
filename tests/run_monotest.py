@@ -24,9 +24,11 @@ BLOCKS = [(SCR, 16384), (GAME, 28000), (TAIL, 60000)]
 GUARDS = [(0x5B00, 0x5C00), (58000, 58600), (61000, 61600), (28000 - 16, 28000), (60000 - 16, 60000)]
 GUARD_BYTES = {a: bytes((a + i * 7) & 255 ^ 0xA5 for i in range(b - a)) for a, b in GUARDS}
 
-VARIANTS = {  # name: (fast, catalog, tiny, universal, rem bytes)
+VARIANTS = {  # name: (fast, catalog, tiny, universal, rem bytes); std*: tps 80 whatever the disk (--std)
     'tiny': (0, 0, 1, 0, 0), 'fast': (1, 0, 0, 0, 0), 'compact': (0, 0, 0, 0, 0), 'cat': (1, 1, 0, 0, 0), 'catc': (0, 1, 0, 0, 0),
-    'uni': (1, 0, 0, 1, 0), 'unicat': (1, 1, 0, 1, 0), 'unipad': (1, 0, 0, 1, 300)}
+    'uni': (1, 0, 0, 1, 0), 'unicat': (1, 1, 0, 1, 0), 'unipad': (1, 0, 0, 1, 300),
+    'std': (1, 0, 0, 0, 0), 'stdtiny': (0, 0, 1, 0, 0)}
+STD = ('std', 'stdtiny')
 LAYOUTS = {
     'sd':   ['start', 'trackend', 'mid'],
     'sdds': ['side-cross', 'on-side1'],
@@ -49,7 +51,7 @@ def disk(variant, fmt, layout):
     fast, cat, tiny, uni, rem = VARIANTS[variant]
     o = OPD.new(fmt, 'MONO')
     payload, info = build(BLOCKS, start=0, name='run', fast=fast, catalog=cat, tiny=tiny,
-                          tps=o.tps, spt=o.spt, bps=o.bps, reserve=GUARDS, warn=lambda m: None,
+                          tps=80 if variant in STD else o.tps, spt=o.spt, bps=o.bps, reserve=GUARDS, warn=lambda m: None,
                           universal=bool(uni), rem=rem)
     if uni:
         assert variant != 'unipad' or info['padu'] == 1, info['padu']
@@ -84,6 +86,8 @@ if __name__ == '__main__':
         print('==', rom, '| boot:', boot)
         for fmt in fmts:
             for variant in variants:
+                if variant in STD and fmt == 'dd':
+                    continue                     # (--std: 256-byte sectors only)
                 for layout in LAYOUTS[fmt]:
                     o, e, info = disk(variant, fmt, layout)
                     with ZX(rom=rom) as zx:
